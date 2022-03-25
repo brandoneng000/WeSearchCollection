@@ -6,29 +6,52 @@ from random import shuffle
 import requests
 
 def main():
-    NUMBER_OF_FILES = 20
-    zip_file = '446c8aa0-6eba-11e5-bc7f-4851b79b387c.zip'
+    NUMBER_OF_FILES = 1000
+    zip_file = config('ZIPFILE')
     auth = get_authenitcation()
     token = get_token(auth)
-    collection_name = "interview"
-    statuses = []
-
+    collection_name = config('COLLECTION')
+    
     create_collection(token, collection_name)
 
     with ZipFile(zip_file, 'r') as zip:
         files = zip.namelist()
+        shuffle(files)
         counter = 0
         for file in files:
             if counter == NUMBER_OF_FILES:
-                responses = get_manifest(token, collection_name)
-                print(responses)
                 break
             data = zip.read(file)
             reference = add_document(token, collection_name, data)
-            statuses.append(tuple((file, reference)))
             counter += 1
+    
+    sleep(5)
+    print(f"Ingested: {check_ingested(token, collection_name)}")
+    print(f"Ingest Failures: {check_ingest_failures(token, collection_name)}")
 
     # delete_collection(token, collection_name)
+
+def check_ingested(token: str, collection_name: str) -> int:
+    ingested = 0
+    responses = get_manifest(token, collection_name)
+
+    for res in responses:
+        if res['status'] == 'Ingested':
+            ingested += 1
+    
+    return ingested
+
+def check_ingest_failures(token: str, collection_name: str) -> int:
+    fail = 0
+
+    responses = get_manifest(token, collection_name)
+
+    for res in responses:
+        if res['status'] == 'IngestFailed':
+            fail += 1
+    
+    return fail
+
 
 def check_status(token: str, collection_name: str, reference: str):
     headers = {
@@ -63,7 +86,7 @@ def delete_collection(token: str, collection_name: str):
         'Authorization': f'Bearer {token}',
     }
     response = requests.delete(f'https://project-apollo-api.stg.gc.casetext.com/v0/{collection_name}/delete', headers=headers)
-    print(response)
+    return response
 
 def create_collection(token: str, collection_name: str):
     headers = {
@@ -75,7 +98,7 @@ def create_collection(token: str, collection_name: str):
 
     response = requests.post(f'https://project-apollo-api.stg.gc.casetext.com/v0/{collection_name}/create', headers=headers, data=data)
 
-    print(response)
+    return response
 
 def get_token(auth: str) -> str:
     auth = auth.split(":")
